@@ -65,10 +65,14 @@ public class Sistema {
 		public void run() {
 			while (true) {
 				// verifica se não
-				
+
 				try {
-					sleep(5000);
-					vm.cpu.setInterrupt(interrupt.Timer);
+					sleep(300);
+					if (!vm.cpu.stackInterrupt.contains(interrupt.Timer)) // verifica se já ha um timer false ->
+																			// prossegue
+					{
+						vm.cpu.setInterrupt(interrupt.Timer);
+					}
 				} catch (InterruptedException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
@@ -384,10 +388,13 @@ public class Sistema {
 								default:
 									// opcode desconhecido*
 									// liga interrup (2)
-									if (stackInterrupt.peek() == interrupt.None) // podem haver interrupcoes para
-																					// chamada
-										setInterrupt(interrupt.InvalidOpcode); // Chama para instrução ativa do tipo
-																				// InvalidOpcode
+									if (!stackInterrupt.empty()) // verifica se a stack não está vazia
+									{
+										if (stackInterrupt.peek() == interrupt.None) // podem haver interrupcoes para
+																						// chamada
+											setInterrupt(interrupt.InvalidOpcode); // Chama para instrução ativa do tipo
+																					// InvalidOpcode
+									}
 							}
 						} catch (IndexOutOfBoundsException e) { // execoes para acesso a elemento de memoria maior que o
 																// vetor
@@ -400,17 +407,21 @@ public class Sistema {
 						// desviar para rotina java que trata int
 						if (!stackInterrupt.empty()) // verifica se a stack não está vazia
 						{
-							if(stackInterrupt.contains(interrupt.intIO))//prioriza intIO
+							if (stackInterrupt.contains(interrupt.intIO))// prioriza intIO
 							{
 								stackInterrupt.removeElement(interrupt.intIO);
 								stateRun = false; // para execucao do loop while/programa
 								trataTnterrupcoes(interrupt.intIO); // trata interrupcao
-							}
-							else{
-							interrupcaoAtiva = stackInterrupt.pop();
-							stateRun = false; // para execucao do loop while/programa
-							trataTnterrupcoes(interrupcaoAtiva); // trata interrupcao
-							//interrupcaoAtiva = interrupt.None;//reseta interrupcao para evitar loop
+							} 
+							else {
+								interrupcaoAtiva = stackInterrupt.pop();
+								if(interrupcaoAtiva == interrupt.None){}//descarta
+								else
+								{
+								stateRun = false; // para execucao do loop while/programa
+								trataTnterrupcoes(interrupcaoAtiva); // trata interrupcao
+								// interrupcaoAtiva = interrupt.None;//reseta interrupcao para evitar loop
+								}
 							}
 						}
 
@@ -1009,9 +1020,9 @@ public class Sistema {
 		public void trataRetornoRotinaIO() {
 			// consome o buffer das rotinas de IO retornadas e tratadas
 			// while (bufferReturnIO.size() != 0) {
-			
+
 			GP.PCB processFirstReturnIO = bufferReturnIO.poll().processo;
-			JOptionPane.showMessageDialog(null, "ID do primeiro processo no retorno = " + processFirstReturnIO.getId());
+			//JOptionPane.showMessageDialog(null, "ID do primeiro processo no retorno = " + processFirstReturnIO.getId());
 			monitor.executa(processFirstReturnIO.getId()); // executa o processo que retornou IO
 			monitor.ps();
 
@@ -1103,21 +1114,6 @@ public class Sistema {
 																		// memoria
 						vm.m[addressT].opc = Opcode.DATA;
 
-						tratamentoIO.bufferReturnIO.add(tratamentoIO.bufferChamadaIO.poll()); // tira o IO tratado do
-																								// buffer de entradas, e
-																								// passa para o buffer
-																								// de IO concluidos
-						// bufferReturnIO <- bufferChamadaIO
-							
-						JOptionPane.showMessageDialog(null, "TAMANHO DO BUFFER ENTRADA " + tratamentoIO.bufferChamadaIO.size());
-						JOptionPane.showMessageDialog(null, "TAMANHO DO BUFFER SAIDA " + tratamentoIO.bufferReturnIO.size());
-						
-						
-						vm.cpu.setInterrupt(interrupt.intIO);
-						JOptionPane.showMessageDialog(null, "Setou interrupcao");
-								
-							
-						
 						// }
 
 					}
@@ -1125,9 +1121,19 @@ public class Sistema {
 					if (reg8 == 2) { // TRAP = 2 -> chamada de OUT
 						int addressT = vm.gm.translate(reg9, processInBuffer.tPaginaProcesso);
 						int output = vm.m[addressT].p; // reg[9]=10, logo, m[10] || output <- m[10]
-						System.out.println(output);
+						JOptionPane.showMessageDialog(null, "TRAP OUTPUT: \n" + output);
+
 						// ?? forma flexíveL, verificar ultima especificacao da Fase3
 					}
+
+					// bufferReturnIO <- bufferChamadaIO
+					tratamentoIO.bufferReturnIO.add(tratamentoIO.bufferChamadaIO.poll()); // tira o IO tratado do
+					// buffer de entradas, e
+					// passa para o buffer
+					// de IO concluidos
+
+					vm.cpu.setInterrupt(interrupt.intIO);
+					// JOptionPane.showMessageDialog(null, "Setou interrupcao");
 
 				} catch (InterruptedException e1) {
 					// TODO Auto-generated catch block
@@ -1196,6 +1202,10 @@ public class Sistema {
 										break;
 									case "testOverFlow":
 										idNewProcess = s.monitor.gp.criaProcesso(progs.testOverFlow);
+										System.out.println(idNewProcess);
+										break;
+									case "testIO":
+										idNewProcess = s.monitor.gp.criaProcesso(progs.testIO);
 										System.out.println(idNewProcess);
 										break;
 
@@ -1324,6 +1334,9 @@ public class Sistema {
 
 		if (i == interrupt.Timer) {
 			System.out.println("Escalonamento Timer");
+			vm.cpu.setInterrupt(interrupt.None);
+			monitor.gp.CurrentProcessGP.setState(STATE.READY); // recebeu a intrrupcao de IO, precisa colocar o processo
+																// atual em pronto
 			monitor.gp.Escalonador(); // chama o escalonador
 		}
 
@@ -1458,12 +1471,24 @@ public class Sistema {
 				new Word(Opcode.STOP, -1, -1, -1),
 		};
 		public Word[] testOUT = new Word[] {
-				new Word(Opcode.LDI, 0, -1, 12345),
+				new Word(Opcode.LDI, 0, -1, 90807060),
 				new Word(Opcode.STD, 0, -1, 10),
 				new Word(Opcode.LDI, 8, -1, 2),
 				new Word(Opcode.LDI, 9, -1, 10),
 				new Word(Opcode.TRAP, -1, -1, -1),
 				new Word(Opcode.STOP, -1, -1, -1),
+		};
+
+		public Word[] testIO = new Word[] {
+				new Word(Opcode.LDI, 8, -1, 1),
+				new Word(Opcode.LDI, 9, -1, 8),
+				new Word(Opcode.TRAP, -1, -1, -1), // trap IN
+
+				new Word(Opcode.LDI, 8, -1, 2), // altera registrador para trap de OUT
+				new Word(Opcode.TRAP, -1, -1, -1), // trap OUT
+
+				new Word(Opcode.STOP, -1, -1, -1),
+
 		};
 
 		public Word[] PA = new Word[] {
